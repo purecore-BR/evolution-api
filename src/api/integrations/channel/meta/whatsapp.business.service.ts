@@ -1183,6 +1183,24 @@ export class BusinessStartupService extends ChannelStartupService {
     return res;
   }
 
+  private validateMediaContent(mediaMessage: MediaMessage) {
+    if (mediaMessage.media === undefined || mediaMessage.media === null) {
+      throw new BadRequestException({
+        field: 'media',
+        message: 'O campo "media" é obrigatório para envio de mídias.',
+        receivedType: typeof mediaMessage.media,
+      });
+    }
+
+    if (typeof mediaMessage.media !== 'string') {
+      throw new BadRequestException({
+        field: 'media',
+        message: 'O campo "media" deve ser uma string contendo uma URL ou um base64 válido.',
+        receivedType: typeof mediaMessage.media,
+      });
+    }
+  }
+
   private async getIdMedia(mediaMessage: any, isFile = false) {
     try {
       const formData = new FormData();
@@ -1231,6 +1249,8 @@ export class BusinessStartupService extends ChannelStartupService {
 
   protected async prepareMediaMessage(mediaMessage: MediaMessage) {
     try {
+      this.validateMediaContent(mediaMessage);
+
       if (mediaMessage.mediatype === 'document' && !mediaMessage.fileName) {
         const regex = new RegExp(/.*\/(.+?)\./);
         const arrayMatch = regex.exec(mediaMessage.media);
