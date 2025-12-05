@@ -30,18 +30,41 @@ import {
   templateMessageSchema,
   textMessageSchema,
 } from '@validate/validate.schema';
-import { RequestHandler, Router } from 'express';
+import { Request, RequestHandler, Router } from 'express';
 import multer from 'multer';
 
 import { HttpStatus } from './index.router';
+import { analyzeMessagePayload, inferMediaMetadata, MessageAnalysis } from '../utils/message-intel.util';
 
 const upload = multer({ storage: multer.memoryStorage() });
 
 export class MessageRouter extends RouterBroker {
+  private annotateRequest(req: Request): MessageAnalysis {
+    const analysis = analyzeMessagePayload(req.body);
+    (req as any).messageAnalysis = analysis;
+
+    return analysis;
+  }
+
+  private normalizeMediaPayload(req: Request) {
+    const analysis = this.annotateRequest(req);
+    const bodyData = {
+      ...req.body,
+      ...inferMediaMetadata(req.body, analysis),
+    } as SendMediaDto;
+
+    if (!bodyData.mediatype) {
+      bodyData.mediatype = 'document';
+    }
+
+    return { analysis, bodyData };
+  }
+
   constructor(...guards: RequestHandler[]) {
     super();
     this.router
       .post(this.routerPath('sendTemplate'), ...guards, async (req, res) => {
+        this.annotateRequest(req);
         const response = await this.dataValidate<SendTemplateDto>({
           request: req,
           schema: templateMessageSchema,
@@ -52,6 +75,7 @@ export class MessageRouter extends RouterBroker {
         return res.status(HttpStatus.CREATED).json(response);
       })
       .post(this.routerPath('sendText'), ...guards, async (req, res) => {
+        this.annotateRequest(req);
         const response = await this.dataValidate<SendTextDto>({
           request: req,
           schema: textMessageSchema,
@@ -62,7 +86,7 @@ export class MessageRouter extends RouterBroker {
         return res.status(HttpStatus.CREATED).json(response);
       })
       .post(this.routerPath('sendMedia'), ...guards, upload.single('file'), async (req, res) => {
-        const bodyData = req.body;
+        const { bodyData } = this.normalizeMediaPayload(req);
 
         const response = await this.dataValidate<SendMediaDto>({
           request: req,
@@ -74,6 +98,7 @@ export class MessageRouter extends RouterBroker {
         return res.status(HttpStatus.CREATED).json(response);
       })
       .post(this.routerPath('sendPtv'), ...guards, upload.single('file'), async (req, res) => {
+        this.annotateRequest(req);
         const bodyData = req.body;
 
         const response = await this.dataValidate<SendPtvDto>({
@@ -86,6 +111,7 @@ export class MessageRouter extends RouterBroker {
         return res.status(HttpStatus.CREATED).json(response);
       })
       .post(this.routerPath('sendWhatsAppAudio'), ...guards, upload.single('file'), async (req, res) => {
+        this.annotateRequest(req);
         const bodyData = req.body;
 
         const response = await this.dataValidate<SendAudioDto>({
@@ -99,6 +125,7 @@ export class MessageRouter extends RouterBroker {
       })
       // TODO: Revisar funcionamento do envio de Status
       .post(this.routerPath('sendStatus'), ...guards, upload.single('file'), async (req, res) => {
+        this.annotateRequest(req);
         const bodyData = req.body;
 
         const response = await this.dataValidate<SendStatusDto>({
@@ -111,6 +138,7 @@ export class MessageRouter extends RouterBroker {
         return res.status(HttpStatus.CREATED).json(response);
       })
       .post(this.routerPath('sendSticker'), ...guards, upload.single('file'), async (req, res) => {
+        this.annotateRequest(req);
         const bodyData = req.body;
 
         const response = await this.dataValidate<SendStickerDto>({
@@ -123,6 +151,7 @@ export class MessageRouter extends RouterBroker {
         return res.status(HttpStatus.CREATED).json(response);
       })
       .post(this.routerPath('sendLocation'), ...guards, async (req, res) => {
+        this.annotateRequest(req);
         const response = await this.dataValidate<SendLocationDto>({
           request: req,
           schema: locationMessageSchema,
@@ -133,6 +162,7 @@ export class MessageRouter extends RouterBroker {
         return res.status(HttpStatus.CREATED).json(response);
       })
       .post(this.routerPath('sendContact'), ...guards, async (req, res) => {
+        this.annotateRequest(req);
         const response = await this.dataValidate<SendContactDto>({
           request: req,
           schema: contactMessageSchema,
@@ -143,6 +173,7 @@ export class MessageRouter extends RouterBroker {
         return res.status(HttpStatus.CREATED).json(response);
       })
       .post(this.routerPath('sendReaction'), ...guards, async (req, res) => {
+        this.annotateRequest(req);
         const response = await this.dataValidate<SendReactionDto>({
           request: req,
           schema: reactionMessageSchema,
@@ -153,6 +184,7 @@ export class MessageRouter extends RouterBroker {
         return res.status(HttpStatus.CREATED).json(response);
       })
       .post(this.routerPath('sendPoll'), ...guards, async (req, res) => {
+        this.annotateRequest(req);
         const response = await this.dataValidate<SendPollDto>({
           request: req,
           schema: pollMessageSchema,
@@ -163,6 +195,7 @@ export class MessageRouter extends RouterBroker {
         return res.status(HttpStatus.CREATED).json(response);
       })
       .post(this.routerPath('sendList'), ...guards, async (req, res) => {
+        this.annotateRequest(req);
         const response = await this.dataValidate<SendListDto>({
           request: req,
           schema: listMessageSchema,
@@ -173,6 +206,7 @@ export class MessageRouter extends RouterBroker {
         return res.status(HttpStatus.CREATED).json(response);
       })
       .post(this.routerPath('sendButtons'), ...guards, async (req, res) => {
+        this.annotateRequest(req);
         const response = await this.dataValidate<SendButtonsDto>({
           request: req,
           schema: buttonsMessageSchema,
