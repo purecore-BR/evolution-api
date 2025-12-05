@@ -1,6 +1,7 @@
 import { InstanceDto } from '@api/dto/instance.dto';
 import {
   MediaMessage,
+  MediaType,
   Options,
   SendAudioDto,
   SendButtonsDto,
@@ -555,38 +556,107 @@ export class EvolutionStartupService extends ChannelStartupService {
     return res;
   }
 
+  private validateMediaContent(mediaMessage: MediaMessage) {
+    if (mediaMessage.media === undefined || mediaMessage.media === null || `${mediaMessage.media}`.trim() === '') {
+      throw new BadRequestException({
+        field: 'media',
+        message:
+          'Nenhum conteúdo de mídia foi enviado. Informe uma URL ou base64 no campo "media" ou anexe um arquivo multipart/form-data.',
+        receivedType: mediaMessage.media === undefined ? 'undefined' : typeof mediaMessage.media,
+      });
+    }
+
+    if (typeof mediaMessage.media !== 'string') {
+      throw new BadRequestException({
+        field: 'media',
+        message: 'Conteúdo inválido no campo "media". Envie uma URL acessível ou um base64 em formato de string.',
+        receivedType: typeof mediaMessage.media,
+      });
+    }
+  }
+
+  private inferMediaTypeFromMimetype(mimetype?: string | false): MediaType {
+    if (!mimetype) return 'document';
+
+    if (mimetype.startsWith('image/')) return 'image';
+    if (mimetype.startsWith('audio/')) return 'audio';
+    if (mimetype.startsWith('video/')) return 'video';
+
+    return 'document';
+  }
+
+  private inferBase64Metadata(media: string, fileName?: string) {
+    const dataUriMatch = /^data:(?<mime>[^;]+);base64,(?<payload>.+)$/i.exec(media);
+    const payload = dataUriMatch?.groups?.payload ?? media;
+    const declaredMime = dataUriMatch?.groups?.mime;
+    const base64Length = payload.length;
+
+    let mimetype = declaredMime || mimeTypes.lookup(fileName || '') || '';
+    if (!mimetype) {
+      if (base64Length > 4_000_000) {
+        mimetype = 'video/mp4';
+      } else if (base64Length > 1_000_000) {
+        mimetype = 'audio/mpeg';
+      } else {
+        mimetype = 'image/png';
+      }
+    }
+
+    const mediaType = this.inferMediaTypeFromMimetype(mimetype);
+    const extension = mimeTypes.extension(mimetype);
+    const normalizedFileName = fileName || (extension ? `media.${extension}` : undefined);
+
+    return { mimetype, mediaType, fileName: normalizedFileName };
+  }
+
   protected async prepareMediaMessage(mediaMessage: MediaMessage) {
     try {
-      if (mediaMessage.mediatype === 'document' && !mediaMessage.fileName) {
-        const regex = new RegExp(/.*\/(.+?)\./);
-        const arrayMatch = regex.exec(mediaMessage.media);
-        mediaMessage.fileName = arrayMatch[1];
-      }
-
-      if (mediaMessage.mediatype === 'image' && !mediaMessage.fileName) {
-        mediaMessage.fileName = 'image.png';
-      }
-
-      if (mediaMessage.mediatype === 'video' && !mediaMessage.fileName) {
-        mediaMessage.fileName = 'video.mp4';
-      }
-
-      let mimetype: string | false;
+      this.validateMediaContent(mediaMessage);
 
       const prepareMedia: any = {
         caption: mediaMessage?.caption,
         fileName: mediaMessage.fileName,
-        mediaType: mediaMessage.mediatype,
         media: mediaMessage.media,
         gifPlayback: false,
       };
 
+      let mimetype: string | false | undefined = mediaMessage.mimetype;
+      let mediaType: MediaType | undefined = mediaMessage.mediatype;
+
       if (isURL(mediaMessage.media)) {
-        mimetype = mimeTypes.lookup(mediaMessage.media);
+        const urlMime = mimeTypes.lookup(mediaMessage.media);
+        mimetype = mimetype || urlMime;
+        mediaType = mediaType || this.inferMediaTypeFromMimetype(mimetype || undefined);
+
+        if (!prepareMedia.fileName) {
+          const regex = new RegExp(/.*\/(.+?)\./);
+          const arrayMatch = regex.exec(mediaMessage.media);
+          prepareMedia.fileName = arrayMatch?.[1];
+        }
       } else {
-        mimetype = mimeTypes.lookup(mediaMessage.fileName);
+        const base64Metadata = this.inferBase64Metadata(mediaMessage.media, prepareMedia.fileName);
+        mimetype = mimetype || base64Metadata.mimetype;
+        mediaType = mediaType || base64Metadata.mediaType;
+        prepareMedia.fileName = base64Metadata.fileName;
       }
 
+      mediaType = mediaType || 'document';
+
+      mimetype = mimetype || (prepareMedia.fileName ? mimeTypes.lookup(prepareMedia.fileName) : false);
+
+      if (mediaType === 'document' && !prepareMedia.fileName) {
+        prepareMedia.fileName = 'document';
+      }
+
+      if (mediaType === 'image' && !prepareMedia.fileName) {
+        prepareMedia.fileName = 'image.png';
+      }
+
+      if (mediaType === 'video' && !prepareMedia.fileName) {
+        prepareMedia.fileName = 'video.mp4';
+      }
+
+      prepareMedia.mediaType = mediaType;
       prepareMedia.mimetype = mimetype;
 
       return prepareMedia;

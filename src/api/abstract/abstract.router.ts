@@ -46,14 +46,25 @@ export abstract class RouterBroker {
     const v = schema ? validate(ref, schema) : { valid: true, errors: [] };
 
     if (!v.valid) {
-      const message: any[] = v.errors.map(({ stack, schema }) => {
+      const message: any[] = v.errors.map(({ property, stack, schema, instance }) => {
         let message: string;
+        const propertyName = property?.replace('instance.', '');
+
         if (schema['description']) {
           message = schema['description'];
         } else {
           message = stack.replace('instance.', '');
         }
-        return message;
+
+        const propertyRegex = /property\s+"(.+?)"/i;
+        const match = stack.match(propertyRegex);
+        const field = propertyName || match?.[1] || 'body';
+
+        return {
+          field,
+          message,
+          receivedType: instance !== undefined ? typeof instance : 'undefined',
+        };
       });
       logger.error(message);
       throw new BadRequestException(message);
