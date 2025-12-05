@@ -557,14 +557,32 @@ export class EvolutionStartupService extends ChannelStartupService {
   }
 
   private validateMediaContent(mediaMessage: MediaMessage) {
-    if (mediaMessage.media === undefined || mediaMessage.media === null || `${mediaMessage.media}`.trim() === '') {
+    if (mediaMessage.media === undefined || mediaMessage.media === null) {
       throw new BadRequestException({
         field: 'media',
-        message:
-          'Nenhum conteúdo de mídia foi enviado. Informe uma URL ou base64 no campo "media" ou anexe um arquivo multipart/form-data.',
-        receivedType: mediaMessage.media === undefined ? 'undefined' : typeof mediaMessage.media,
+        message: 'O campo "media" é obrigatório para envio de mídias.',
+        receivedType: typeof mediaMessage.media,
       });
     }
+
+    if (typeof mediaMessage.media !== 'string') {
+      throw new BadRequestException({
+        field: 'media',
+        message: 'O campo "media" deve ser uma string contendo uma URL ou um base64 válido.',
+        receivedType: typeof mediaMessage.media,
+      });
+    }
+  }
+
+  protected async prepareMediaMessage(mediaMessage: MediaMessage) {
+    try {
+      this.validateMediaContent(mediaMessage);
+
+      if (mediaMessage.mediatype === 'document' && !mediaMessage.fileName) {
+        const regex = new RegExp(/.*\/(.+?)\./);
+        const arrayMatch = regex.exec(mediaMessage.media);
+        mediaMessage.fileName = arrayMatch[1];
+      }
 
     if (typeof mediaMessage.media !== 'string') {
       throw new BadRequestException({
